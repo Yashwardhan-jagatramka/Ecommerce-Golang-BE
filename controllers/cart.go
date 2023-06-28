@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"github.com/Yashwardhan-jagatramka/ecommerce-golang-BE/database"
+	"github.com/Yashwardhan-jagatramka/ecommerce-golang-BE/models"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"log"
@@ -100,7 +102,45 @@ func (app *Application) RemoveItem() gin.HandlerFunc {
 
 func (app *Application) GetItemFromCart() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		user := c.Query("id")
 
+		if user == "" {
+			c.Header("Content-Type", "application/json")
+			c.JSON(http.StatusNotFound, gin.H{"error": "Invalid ID"})
+			c.Abort()
+			return
+		}
+		user_id, _ := primitive.ObjectIDFromHex(user)
+
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		var filledCart models.User
+		err := UserCollection.FindOne(ctx, bson.D{primitive.E{Key: "_id", Value: user_id}}).Decode(&filledCart)
+
+		if err != nil {
+			log.Println(err)
+			c.IndentedJSON(500, "not found")
+			return
+		}
+
+		filter_match := bson.D{{Key: "$match", Value: bson.D{primitive.E{Key: "_id", Value: user_id}}}}
+		unwind := bson.D{{Key: "$unwind", Value: bson.D{primitive.E{Key: "path", Value: "$usercart"}}}}
+		grouping := bson.D{{Key: "$group", Value: bson.D{primitive.E{Key: "_id", Value: "$_id"}, {Key: "total", Value: bson.D{primitive.E{Key: "$sum", Value: "$usercart.price"}}}}}}
+		cursor, err := UserCollection.Aggregate(ctx, mongo.Pipeline{filter_match, unwind, grouping})
+		if err != nil {
+			log.Println(err)
+		}
+		var listing []bson.M
+		if err = cursor.All(ctx, &listing); err != nil {
+			log.Println(err)
+			c.AbortWithStatus(http.StatusInternalServerError)
+		}
+		for _, json := range listing {
+			c.IndentedJSON(200, json["total"])
+			c.IndentedJSON(200, filledCart.UserCart)
+		}
+		ctx.Done()
 	}
 }
 
