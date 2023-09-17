@@ -103,7 +103,6 @@ func (app *Application) RemoveItem() gin.HandlerFunc {
 func (app *Application) GetItemFromCart() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user := c.Query("id")
-
 		if user == "" {
 			c.Header("Content-Type", "application/json")
 			c.JSON(http.StatusNotFound, gin.H{"error": "Invalid ID"})
